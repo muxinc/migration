@@ -3,7 +3,7 @@ package golang
 import (
 	"fmt"
 
-	m "github.com/Boostport/migration"
+	m "github.com/GRVYDEV/migration"
 )
 
 // Driver is the golang migration.Driver implementation

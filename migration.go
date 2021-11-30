@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/Boostport/migration/parser"
+	"github.com/GRVYDEV/migration/parser"
 )
 
 // Direction type up/down

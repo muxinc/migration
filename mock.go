@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/Boostport/migration/parser"
+	"github.com/GRVYDEV/migration/parser"
 )
 
 type mockDriver struct {

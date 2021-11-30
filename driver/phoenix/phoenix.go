@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	m "github.com/Boostport/migration"
-	"github.com/Boostport/migration/parser"
+	m "github.com/GRVYDEV/migration"
+	"github.com/GRVYDEV/migration/parser"
 	avatica "github.com/apache/calcite-avatica-go/v5"
 )
 

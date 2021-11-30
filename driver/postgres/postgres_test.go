@@ -6,9 +6,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/Boostport/migration"
-	"github.com/Boostport/migration/parser"
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/GRVYDEV/migration"
+	"github.com/GRVYDEV/migration/parser"
 	"github.com/jackc/pgconn"
 	_ "github.com/jackc/pgx/v4/stdlib"
 )

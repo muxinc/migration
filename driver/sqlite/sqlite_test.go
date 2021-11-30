@@ -5,9 +5,9 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/Boostport/migration"
-	"github.com/Boostport/migration/parser"
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
+	"github.com/GRVYDEV/migration"
+	"github.com/GRVYDEV/migration/parser"
 	_ "github.com/mattn/go-sqlite3"
 )
 

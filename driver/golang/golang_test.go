@@ -3,7 +3,7 @@ package golang
 import (
 	"testing"
 
-	"github.com/Boostport/migration"
+	"github.com/GRVYDEV/migration"
 )
 
 func TestGolangDriver(t *testing.T) {
