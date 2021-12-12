@@ -1,75 +1,97 @@
 package postgres
 
 import (
-	"database/sql"
-	"errors"
+	"context"
 	"fmt"
 
 	m "github.com/GRVYDEV/migration"
 	"github.com/GRVYDEV/migration/parser"
-	"github.com/jackc/pgx/v4/stdlib"
+	"github.com/jackc/pgconn"
+	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
 )
 
 // Driver is the postgres migration.Driver implementation
 type Driver struct {
-	db *sql.DB
+	db pgxQueryable
+}
+
+// pgxQueryable is an interface encapsulating the common methods required from
+// either pgx.Conn or pgxpool.Pool.
+type pgxQueryable interface {
+	Begin(ctx context.Context) (pgx.Tx, error)
+	Close(ctx context.Context) error
+	Exec(ctx context.Context, sql string, arguments ...interface{}) (commandTag pgconn.CommandTag, err error)
+	Ping(ctx context.Context) error
+	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
 }
 
 const postgresTableName = "schema_migration"
 
-// New creates a new Driver driver.
+// New creates a new Driver and initializes a connection to the database. The
+// context can be used to cancel the connection attempt.
 // The DSN is documented here: https://pkg.go.dev/github.com/jackc/pgx/v4@v4.10.1/stdlib#pkg-overview
-func New(dsn string) (m.Driver, error) {
-	db, err := sql.Open("pgx", dsn)
+func New(ctx context.Context, dsn string) (m.Driver, error) {
+	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {
 		return nil, err
 	}
-	if err := db.Ping(); err != nil {
+	return NewFromConn(ctx, conn)
+}
+
+// NewFromConn creates a new Driver and initializes a connection to the database. The
+// context can be used to cancel the connection attempt.
+// The DSN is documented here: https://pkg.go.dev/github.com/jackc/pgx/v4@v4.10.1/stdlib#pkg-overview
+func NewFromConn(ctx context.Context, conn *pgx.Conn) (m.Driver, error) {
+	return newFromQueryable(ctx, conn)
+}
+
+// NewFromConn creates a new Driver and initializes a connection to the database. The
+// context can be used to cancel the connection attempt.
+// The DSN is documented here: https://pkg.go.dev/github.com/jackc/pgx/v4@v4.10.1/stdlib#pkg-overview
+func newFromQueryable(ctx context.Context, q pgxQueryable) (m.Driver, error) {
+	if err := q.Ping(ctx); err != nil {
 		return nil, err
 	}
 
 	d := &Driver{
-		db: db,
+		db: q,
 	}
-	if err := d.ensureVersionTableExists(); err != nil {
+	if err := d.ensureVersionTableExists(ctx); err != nil {
 		return nil, err
 	}
 
 	return d, nil
 }
 
-// NewFromDB returns a postgres driver from a sql.DB
-func NewFromDB(db *sql.DB) (m.Driver, error) {
-	if _, ok := db.Driver().(*stdlib.Driver); !ok {
-		return nil, errors.New("database instance is not using the postgres driver")
-	}
-	if err := db.Ping(); err != nil {
-		return nil, err
-	}
+type poolWithoutContextClose struct {
+	*pgxpool.Pool
+}
 
-	d := &Driver{
-		db: db,
-	}
-	if err := d.ensureVersionTableExists(); err != nil {
-		return nil, err
-	}
+func (p *poolWithoutContextClose) Close(ctx context.Context) error {
+	p.Pool.Close()
+	return nil
+}
 
-	return d, nil
+// NewFromPool creates a new Driver and initializes a connection to the database. The
+// context can be used to cancel the connection attempt.
+// The DSN is documented here: https://pkg.go.dev/github.com/jackc/pgx/v4@v4.10.1/stdlib#pkg-overview
+func NewFromPool(ctx context.Context, pool *pgxpool.Pool) (m.Driver, error) {
+	return newFromQueryable(ctx, &poolWithoutContextClose{pool})
 }
 
 // Close closes the connection to the Driver server.
-func (driver *Driver) Close() error {
-	err := driver.db.Close()
-	return err
+func (driver *Driver) Close(ctx context.Context) error {
+	return driver.db.Close(ctx)
 }
 
-func (driver *Driver) ensureVersionTableExists() error {
-	_, err := driver.db.Exec("CREATE TABLE IF NOT EXISTS " + postgresTableName + " (version varchar(255) not null primary key)")
+func (driver *Driver) ensureVersionTableExists(ctx context.Context) error {
+	_, err := driver.db.Exec(ctx, "CREATE TABLE IF NOT EXISTS "+postgresTableName+" (version varchar(255) not null primary key)")
 	return err
 }
 
 // Migrate runs a migration.
-func (driver *Driver) Migrate(migration *m.PlannedMigration) (err error) {
+func (driver *Driver) Migrate(ctx context.Context, migration *m.PlannedMigration) (err error) {
 	var (
 		migrationStatements *parser.ParsedMigration
 		insertVersion       string
@@ -84,37 +106,37 @@ func (driver *Driver) Migrate(migration *m.PlannedMigration) (err error) {
 	}
 
 	if migrationStatements.UseTransaction {
-		tx, err := driver.db.Begin()
+		tx, err := driver.db.Begin(ctx)
 		if err != nil {
 			return err
 		}
 
 		defer func() {
 			if err != nil {
-				if errRb := tx.Rollback(); errRb != nil {
+				if errRb := tx.Rollback(context.Background()); errRb != nil {
 					err = fmt.Errorf("error rolling back: %s\n%s", errRb, err)
 				}
 				return
 			}
-			err = tx.Commit()
+			err = tx.Commit(ctx)
 		}()
 
 		for _, statement := range migrationStatements.Statements {
-			if _, err = tx.Exec(statement); err != nil {
+			if _, err = tx.Exec(ctx, statement); err != nil {
 				return fmt.Errorf("error executing statement: %s\n%s", err, statement)
 			}
 		}
 
-		if _, err = tx.Exec(insertVersion, migration.ID); err != nil {
+		if _, err = tx.Exec(ctx, insertVersion, migration.ID); err != nil {
 			return fmt.Errorf("error updating migration versions: %s", err)
 		}
 	} else {
 		for _, statement := range migrationStatements.Statements {
-			if _, err := driver.db.Exec(statement); err != nil {
+			if _, err := driver.db.Exec(ctx, statement); err != nil {
 				return fmt.Errorf("error executing statement: %s\n%s", err, statement)
 			}
 		}
-		if _, err = driver.db.Exec(insertVersion, migration.ID); err != nil {
+		if _, err = driver.db.Exec(ctx, insertVersion, migration.ID); err != nil {
 			return fmt.Errorf("error updating migration versions: %s", err)
 		}
 	}
@@ -122,16 +144,14 @@ func (driver *Driver) Migrate(migration *m.PlannedMigration) (err error) {
 }
 
 // Versions lists all the applied versions.
-func (driver *Driver) Versions() ([]string, error) {
+func (driver *Driver) Versions(ctx context.Context) ([]string, error) {
 	var versions []string
 
-	rows, err := driver.db.Query("SELECT version FROM " + postgresTableName + " ORDER BY version DESC")
+	rows, err := driver.db.Query(ctx, "SELECT version FROM "+postgresTableName+" ORDER BY version DESC")
 	if err != nil {
 		return versions, err
 	}
-	defer func() {
-		_ = rows.Close()
-	}()
+	defer rows.Close()
 
 	for rows.Next() {
 		var version string
@@ -141,8 +161,9 @@ func (driver *Driver) Versions() ([]string, error) {
 		}
 		versions = append(versions, version)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
-	err = rows.Err()
-
-	return versions, err
+	return versions, nil
 }
