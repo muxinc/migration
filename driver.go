@@ -5,7 +5,9 @@ import "context"
 // Driver is the interface type that needs to implemented by all drivers.
 type Driver interface {
 	// Close is the last function to be called.
-	// Close any open connection here.
+	//
+	// Drivers should use this call to close any created connections or clean up
+	// other resources as appropriate.
 	Close(ctx context.Context) error
 
 	// Migrate is the heart of the driver.
