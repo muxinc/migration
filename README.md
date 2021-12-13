@@ -34,10 +34,10 @@ embedSource := &migration.EmbedMigrationSource{
 driver, err := mysql.New("root:@tcp(localhost)/mydatabase?multiStatements=true")
 
 // Run all up migrations
-applied, err := migration.Migrate(driver, embedSource, migration.Up, 0)
+applied, err := migration.Migrate(driver, embedSource, migration.Up, 0, logger)
 
 // Remove the last 2 migrations
-applied, err := migration.Migrate(driver, embedSource, migration.Down, 2)
+applied, err := migration.Migrate(driver, embedSource, migration.Down, 2, logger)
 ```
 
 ## Writing migrations
@@ -212,7 +212,7 @@ updateVersion := func(id string, direction migration.Direction) error {
 driver, err := golang.New(source, updateVersion, applied)
 
 // Run migrations
-count, err = migration.Migrate(driver, source, migration.Up, 0)
+count, err = migration.Migrate(driver, source, migration.Up, 0, logger)
 ```
 
 ## TODO (Pull requests welcomed!)

@@ -2,11 +2,20 @@ package migration
 
 import (
 	"context"
+	"log"
 	"reflect"
 	"sort"
 	"testing"
 	"time"
 )
+
+type stdoutLogger struct{}
+
+func (tl *stdoutLogger) Printf(format string, args ...interface{}) {
+	log.Printf(format, args...)
+}
+
+var testLogger *stdoutLogger = &stdoutLogger{}
 
 func TestDirectionString(t *testing.T) {
 	if Up.String() != "up" {
@@ -135,7 +144,7 @@ func TestMigrationWithHoles(t *testing.T) {
 	}
 
 	driver := getMockDriver()
-	applied, err := Migrate(ctx, driver, memoryMigration, Up, 0)
+	applied, err := Migrate(ctx, driver, memoryMigration, Up, 0, testLogger)
 	if err != nil {
 		t.Errorf("Unexpected error while performing asset migration: %s", err)
 	}
@@ -152,7 +161,7 @@ func TestMigrationWithHoles(t *testing.T) {
 	memoryMigration.Files["4_another_update.up.sql"] = ""
 	memoryMigration.Files["4_another_update.up.sql"] = ""
 
-	applied2, err := Migrate(ctx, driver, memoryMigration, Up, 0)
+	applied2, err := Migrate(ctx, driver, memoryMigration, Up, 0, testLogger)
 	if err != nil {
 		t.Errorf("Unexpected error while performing asset migration: %s", err)
 	}
@@ -182,7 +191,7 @@ func TestMigrateUpWithLimit(t *testing.T) {
 	}
 
 	driver := getMockDriver()
-	applied, err := Migrate(ctx, driver, memoryMigration, Up, 2)
+	applied, err := Migrate(ctx, driver, memoryMigration, Up, 2, testLogger)
 	if err != nil {
 		t.Errorf("Unexpected error while performing asset migration: %s", err)
 	}
@@ -193,7 +202,7 @@ func TestMigrateUpWithLimit(t *testing.T) {
 		t.Errorf("Applied %d migrations, but driver is showing %d applied.", applied, len(driver.applied))
 	}
 
-	applied2, err := Migrate(ctx, driver, memoryMigration, Up, 2)
+	applied2, err := Migrate(ctx, driver, memoryMigration, Up, 2, testLogger)
 	if err != nil {
 		t.Errorf("Unexpected error while performing asset migration: %s", err)
 	}
@@ -223,7 +232,7 @@ func TestMigrateDownWithLimit(t *testing.T) {
 	}
 
 	driver := getMockDriver()
-	applied, err := Migrate(ctx, driver, memoryMigration, Up, 0)
+	applied, err := Migrate(ctx, driver, memoryMigration, Up, 0, testLogger)
 	if err != nil {
 		t.Errorf("Unexpected error while performing asset migration: %s", err)
 	}
@@ -234,7 +243,7 @@ func TestMigrateDownWithLimit(t *testing.T) {
 		t.Errorf("Applied %d migrations, but driver is showing %d applied.", applied, len(driver.applied))
 	}
 
-	applied2, err := Migrate(ctx, driver, memoryMigration, Down, 2)
+	applied2, err := Migrate(ctx, driver, memoryMigration, Down, 2, testLogger)
 	if err != nil {
 		t.Errorf("Unexpected error while performing asset migration: %s", err)
 	}
@@ -260,7 +269,7 @@ func TestMigrationWithError(t *testing.T) {
 	}
 
 	driver := getMockDriver()
-	applied, err := Migrate(ctx, driver, memoryMigration, Up, 2)
+	applied, err := Migrate(ctx, driver, memoryMigration, Up, 2, testLogger)
 	if err == nil {
 		t.Error("Expected error while running migration, but there was no error")
 	}
@@ -268,7 +277,7 @@ func TestMigrationWithError(t *testing.T) {
 		t.Errorf("%d migrations should be applied, but %d was applied.", 1, applied)
 	}
 
-	applied2, err := Migrate(ctx, driver, memoryMigration, Down, 1)
+	applied2, err := Migrate(ctx, driver, memoryMigration, Down, 1, testLogger)
 	if err == nil {
 		t.Error("Expected error while running migration, but there was no error")
 	}

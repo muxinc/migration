@@ -88,13 +88,17 @@ func (b byID) Len() int           { return len(b) }
 func (b byID) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
 func (b byID) Less(i, j int) bool { return b[i].Less(b[j]) }
 
+type Logger interface {
+	Printf(format string, v ...interface{})
+}
+
 // Migrate runs a migration using a given driver and MigrationSource. The direction defines whether
 // the migration is up or down, and max is the maximum number of migrations to apply. If max is set to 0,
-// then there is no limit on the number of migrations to apply.
+// then there is no limit on the number of migrations to apply. Logs are sent to Logger.
 //
 // If ctx is cancelled before all migrations have completed, any active or
 // remaining migrations will be cancelled.
-func Migrate(ctx context.Context, driver Driver, migrations Source, direction Direction, max int) (int, error) {
+func Migrate(ctx context.Context, driver Driver, migrations Source, direction Direction, max int, l Logger) (int, error) {
 	count := 0
 
 	m, err := getMigrations(migrations)
@@ -109,7 +113,7 @@ func Migrate(ctx context.Context, driver Driver, migrations Source, direction Di
 
 	migrationsToApply := planMigrations(m, appliedMigrations, direction, max)
 	for _, plannedMigration := range migrationsToApply {
-		logPrintf("Applying migration (%s) named '%s'...", direction.String(), plannedMigration.ID)
+		logPrintf(l, "Applying migration (%s) named '%s'...", direction.String(), plannedMigration.ID)
 
 		err = driver.Migrate(ctx, plannedMigration)
 		if err != nil {
@@ -123,12 +127,16 @@ func Migrate(ctx context.Context, driver Driver, migrations Source, direction Di
 			return count, fmt.Errorf(errorMessage+": %s", err)
 		}
 
-		logPrintf("Applied migration (%s) named '%s'", direction.String(), plannedMigration.ID)
+		logPrintf(l, "Applied migration (%s) named '%s'", direction.String(), plannedMigration.ID)
 		count++
 	}
 
 	err = driver.Close(context.Background())
 	return count, err
+}
+
+func logPrintf(l Logger, format string, args ...interface{}) {
+	l.Printf(format, args...)
 }
 
 func getMigrations(migrations Source) ([]*Migration, error) {

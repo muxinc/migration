@@ -6,56 +6,59 @@ import (
 
 	m "github.com/GRVYDEV/migration"
 	"github.com/GRVYDEV/migration/parser"
-	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
 )
 
 // Driver is the postgres migration.Driver implementation
 type Driver struct {
-	db pgxQueryable
-}
-
-// pgxQueryable is an interface encapsulating the common methods required from
-// either pgx.Conn or pgxpool.Pool.
-type pgxQueryable interface {
-	Begin(ctx context.Context) (pgx.Tx, error)
-	Close(ctx context.Context) error
-	Exec(ctx context.Context, sql string, arguments ...interface{}) (commandTag pgconn.CommandTag, err error)
-	Ping(ctx context.Context) error
-	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+	conn *pgx.Conn
+	// closeConnOnClose indicates whether or not conn should be closed upon
+	// Driver.Close(). It is set to true if the conn was created by the Driver
+	// rather than passed in.
+	closeConnOnClose bool
 }
 
 const postgresTableName = "schema_migration"
 
 // New creates a new Driver and initializes a connection to the database. The
 // context can be used to cancel the connection attempt.
+//
 // The DSN is documented here: https://pkg.go.dev/github.com/jackc/pgx/v4@v4.10.1/stdlib#pkg-overview
+//
+// If a conn has been created, it will be closed when Close() is called on the
+// returned Driver.
 func New(ctx context.Context, dsn string) (m.Driver, error) {
 	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {
 		return nil, err
 	}
-	return NewFromConn(ctx, conn)
+	d, err := newFromConn(ctx, conn)
+	if err != nil {
+		conn.Close(ctx)
+		return nil, err
+	}
+	// ensure that this conn is closed upon Driver.Close():
+	d.closeConnOnClose = true
+	return d, err
 }
 
-// NewFromConn creates a new Driver and initializes a connection to the database. The
-// context can be used to cancel the connection attempt.
-// The DSN is documented here: https://pkg.go.dev/github.com/jackc/pgx/v4@v4.10.1/stdlib#pkg-overview
+// NewFromConn creates a new Driver from an existing database connection. The
+// connection is pinged for availability before returning, and ctx can be used
+// to cancel the ping attempt.
+//
+// The conn will be closed after migrations complete (when Close() is called on
+// the driver).
 func NewFromConn(ctx context.Context, conn *pgx.Conn) (m.Driver, error) {
-	return newFromQueryable(ctx, conn)
-}
-
-// NewFromConn creates a new Driver and initializes a connection to the database. The
-// context can be used to cancel the connection attempt.
-// The DSN is documented here: https://pkg.go.dev/github.com/jackc/pgx/v4@v4.10.1/stdlib#pkg-overview
-func newFromQueryable(ctx context.Context, q pgxQueryable) (m.Driver, error) {
-	if err := q.Ping(ctx); err != nil {
+	if err := conn.Ping(ctx); err != nil {
 		return nil, err
 	}
 
+	return newFromConn(ctx, conn)
+}
+
+func newFromConn(ctx context.Context, conn *pgx.Conn) (*Driver, error) {
 	d := &Driver{
-		db: q,
+		conn: conn,
 	}
 	if err := d.ensureVersionTableExists(ctx); err != nil {
 		return nil, err
@@ -64,29 +67,16 @@ func newFromQueryable(ctx context.Context, q pgxQueryable) (m.Driver, error) {
 	return d, nil
 }
 
-type poolWithoutContextClose struct {
-	*pgxpool.Pool
-}
-
-func (p *poolWithoutContextClose) Close(ctx context.Context) error {
-	p.Pool.Close()
+// Close closes the connection to the Driver server.
+func (driver *Driver) Close(ctx context.Context) error {
+	if driver.closeConnOnClose {
+		return driver.conn.Close(ctx)
+	}
 	return nil
 }
 
-// NewFromPool creates a new Driver and initializes a connection to the database. The
-// context can be used to cancel the connection attempt.
-// The DSN is documented here: https://pkg.go.dev/github.com/jackc/pgx/v4@v4.10.1/stdlib#pkg-overview
-func NewFromPool(ctx context.Context, pool *pgxpool.Pool) (m.Driver, error) {
-	return newFromQueryable(ctx, &poolWithoutContextClose{pool})
-}
-
-// Close closes the connection to the Driver server.
-func (driver *Driver) Close(ctx context.Context) error {
-	return driver.db.Close(ctx)
-}
-
 func (driver *Driver) ensureVersionTableExists(ctx context.Context) error {
-	_, err := driver.db.Exec(ctx, "CREATE TABLE IF NOT EXISTS "+postgresTableName+" (version varchar(255) not null primary key)")
+	_, err := driver.conn.Exec(ctx, "CREATE TABLE IF NOT EXISTS "+postgresTableName+" (version varchar(255) not null primary key)")
 	return err
 }
 
@@ -106,7 +96,7 @@ func (driver *Driver) Migrate(ctx context.Context, migration *m.PlannedMigration
 	}
 
 	if migrationStatements.UseTransaction {
-		tx, err := driver.db.Begin(ctx)
+		tx, err := driver.conn.Begin(ctx)
 		if err != nil {
 			return err
 		}
@@ -132,11 +122,11 @@ func (driver *Driver) Migrate(ctx context.Context, migration *m.PlannedMigration
 		}
 	} else {
 		for _, statement := range migrationStatements.Statements {
-			if _, err := driver.db.Exec(ctx, statement); err != nil {
+			if _, err := driver.conn.Exec(ctx, statement); err != nil {
 				return fmt.Errorf("error executing statement: %s\n%s", err, statement)
 			}
 		}
-		if _, err = driver.db.Exec(ctx, insertVersion, migration.ID); err != nil {
+		if _, err = driver.conn.Exec(ctx, insertVersion, migration.ID); err != nil {
 			return fmt.Errorf("error updating migration versions: %s", err)
 		}
 	}
@@ -147,7 +137,7 @@ func (driver *Driver) Migrate(ctx context.Context, migration *m.PlannedMigration
 func (driver *Driver) Versions(ctx context.Context) ([]string, error) {
 	var versions []string
 
-	rows, err := driver.db.Query(ctx, "SELECT version FROM "+postgresTableName+" ORDER BY version DESC")
+	rows, err := driver.conn.Query(ctx, "SELECT version FROM "+postgresTableName+" ORDER BY version DESC")
 	if err != nil {
 		return versions, err
 	}

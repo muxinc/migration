@@ -11,7 +11,6 @@ import (
 	"github.com/GRVYDEV/migration/parser"
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
 )
 
 var postgresHost = os.Getenv("POSTGRES_HOST")
@@ -173,12 +172,19 @@ func TestPostgresDriver(t *testing.T) {
 		t.Errorf("expected %d versions to be applied, %d was actually applied.", 2, len(versions))
 	}
 
+	// Ensure that the conn hasn't been closed yet, but that it is closed by driver.Close():
+	if driver.(*Driver).conn.IsClosed() {
+		t.Errorf("expected underlying conn to still be open, but it wasn't")
+	}
 	if err = driver.Close(ctx); err != nil {
 		t.Errorf("unexpected error %v while closing the postgres driver.", err)
 	}
+	if !driver.(*Driver).conn.IsClosed() {
+		t.Errorf("expected underlying conn to have been closed but it wasn't")
+	}
 }
 
-func TestNewFromPool(t *testing.T) {
+func TestNewFromConn(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -206,13 +212,13 @@ func TestNewFromPool(t *testing.T) {
 		}
 	}()
 
-	pool, err := pgxpool.Connect(ctx, "postgres://postgres:@"+postgresHost+"/"+database+"?sslmode=disable")
+	connection2, err := pgx.Connect(ctx, "postgres://postgres:@"+postgresHost+"/"+database+"?sslmode=disable")
 	if err != nil {
 		t.Fatalf("error opening database pool: %s", err)
 	}
-	defer pool.Close()
+	defer connection2.Close(ctx)
 
-	driver, err := NewFromPool(ctx, pool)
+	driver, err := NewFromConn(ctx, connection2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,12 +232,75 @@ func TestNewFromPool(t *testing.T) {
 		}
 	}()
 
+	migrations := []*migration.PlannedMigration{
+		{
+			Migration: &migration.Migration{
+				ID: "201610041422_init",
+				Up: &parser.ParsedMigration{
+					Statements: []string{
+						`CREATE TABLE test_table1 (id integer not null primary key);
+
+				   		 CREATE TABLE test_table2 (id integer not null primary key)`,
+					},
+					UseTransaction: false,
+				},
+			},
+			Direction: migration.Up,
+		},
+		{
+			Migration: &migration.Migration{
+				ID: "201610041425_drop_unused_table",
+				Up: &parser.ParsedMigration{
+					Statements: []string{
+						"DROP TABLE test_table2",
+					},
+					UseTransaction: false,
+				},
+				Down: &parser.ParsedMigration{
+					Statements: []string{
+						"CREATE TABLE test_table2(id integer not null primary key)",
+					},
+					UseTransaction: false,
+				},
+			},
+			Direction: migration.Up,
+		},
+		{
+			Migration: &migration.Migration{
+				ID: "201610041422_invalid_sql",
+				Up: &parser.ParsedMigration{
+					Statements: []string{
+						"CREATE TABLE test_table3 (some error",
+					},
+					UseTransaction: false,
+				},
+			},
+			Direction: migration.Up,
+		},
+	}
+
+	err = driver.Migrate(ctx, migrations[0])
+	if err != nil {
+		t.Errorf("unexpected error while running migration: %s", err)
+	}
+
 	versions, err := driver.Versions(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if len(versions) != 0 {
+	if len(versions) != 1 {
 		t.Errorf("expected empty version list, got %+v", versions)
+	}
+
+	// Ensure that closing the driver doesn't touch the provided conn:
+	if connection2.IsClosed() {
+		t.Fatal("expected conn2 to still be open but it wasn't")
+	}
+	if err = driver.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if connection2.IsClosed() {
+		t.Fatal("expected conn2 to still be open after Driver.Close, but it was closed")
 	}
 }
