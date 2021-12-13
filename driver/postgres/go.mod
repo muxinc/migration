@@ -3,7 +3,7 @@ module github.com/GRVYDEV/migration/driver/postgres
 go 1.17
 
 require (
-	github.com/GRVYDEV/migration v0.21.5
+	github.com/GRVYDEV/migration v0.22
 	github.com/jackc/pgconn v1.10.1
 	github.com/jackc/pgx/v4 v4.14.1
 )
