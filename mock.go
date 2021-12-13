@@ -1,6 +1,7 @@
 package migration
 
 import (
+	"context"
 	"errors"
 	"strings"
 
@@ -11,11 +12,11 @@ type mockDriver struct {
 	applied []string
 }
 
-func (m *mockDriver) Close() error {
+func (m *mockDriver) Close(ctx context.Context) error {
 	return nil
 }
 
-func (m *mockDriver) Migrate(migration *PlannedMigration) error {
+func (m *mockDriver) Migrate(ctx context.Context, migration *PlannedMigration) error {
 	var migrationStatements *parser.ParsedMigration
 
 	if migration.Direction == Up {
@@ -56,7 +57,7 @@ func (m *mockDriver) Migrate(migration *PlannedMigration) error {
 	return nil
 }
 
-func (m *mockDriver) Versions() ([]string, error) {
+func (m *mockDriver) Versions(ctx context.Context) ([]string, error) {
 	return m.applied, nil
 }
 
