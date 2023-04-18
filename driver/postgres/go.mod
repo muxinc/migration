@@ -3,8 +3,8 @@ module github.com/muxinc/migration/driver/postgres
 go 1.17
 
 require (
-	github.com/muxinc/migration v0.23.0
 	github.com/jackc/pgx/v5 v5.3.1
+	github.com/muxinc/migration v0.23.1
 )
 
 require (
