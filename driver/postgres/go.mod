@@ -1,9 +1,9 @@
-module github.com/GRVYDEV/migration/driver/postgres
+module github.com/muxinc/migration/driver/postgres
 
 go 1.17
 
 require (
-	github.com/GRVYDEV/migration v0.22.1
+	github.com/muxinc/migration v0.23.0
 	github.com/jackc/pgx/v5 v5.3.1
 )
 

@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	m "github.com/GRVYDEV/migration"
-	"github.com/GRVYDEV/migration/parser"
 	"github.com/jackc/pgx/v5"
+	m "github.com/muxinc/migration"
+	"github.com/muxinc/migration/parser"
 )
 
 // Driver is the postgres migration.Driver implementation

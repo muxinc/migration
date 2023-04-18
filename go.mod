@@ -1,4 +1,4 @@
-module github.com/GRVYDEV/migration
+module github.com/muxinc/migration
 
 go 1.17
 

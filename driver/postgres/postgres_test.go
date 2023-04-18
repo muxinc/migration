@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GRVYDEV/migration"
-	"github.com/GRVYDEV/migration/parser"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/muxinc/migration"
+	"github.com/muxinc/migration/parser"
 )
 
 var postgresHost = os.Getenv("POSTGRES_HOST")

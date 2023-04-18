@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/GRVYDEV/migration/parser"
+	"github.com/muxinc/migration/parser"
 )
 
 // Direction type up/down
