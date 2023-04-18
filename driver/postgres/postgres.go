@@ -6,7 +6,7 @@ import (
 
 	m "github.com/GRVYDEV/migration"
 	"github.com/GRVYDEV/migration/parser"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 )
 
 // Driver is the postgres migration.Driver implementation
@@ -23,7 +23,7 @@ const postgresTableName = "schema_migration"
 // New creates a new Driver and initializes a connection to the database. The
 // context can be used to cancel the connection attempt.
 //
-// The DSN is documented here: https://pkg.go.dev/github.com/jackc/pgx/v4@v4.10.1/stdlib#pkg-overview
+// The DSN is documented here: https://pkg.go.dev/github.com/jackc/pgx/v5/stdlib#pkg-overview
 //
 // If a conn has been created, it will be closed when Close() is called on the
 // returned Driver.

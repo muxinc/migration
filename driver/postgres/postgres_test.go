@@ -9,8 +9,8 @@ import (
 
 	"github.com/GRVYDEV/migration"
 	"github.com/GRVYDEV/migration/parser"
-	"github.com/jackc/pgconn"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var postgresHost = os.Getenv("POSTGRES_HOST")
